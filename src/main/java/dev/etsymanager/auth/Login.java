@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,6 +22,7 @@ import java.util.function.Supplier;
 /** The one-off `login` command: print the authorization URL, read the pasted code, exchange it for tokens. */
 public class Login {
     static final String SCOPES = "listings_r listings_w shops_r";
+    private static final java.time.Duration CALLBACK_TIMEOUT = java.time.Duration.ofMinutes(5);
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final EtsyClient etsy;
@@ -29,20 +31,35 @@ public class Login {
     private final PrintStream out;
     private final Supplier<String> stateSupplier;
     private final Supplier<String> verifierSupplier;
+    private final int callbackPort;
 
+    /** @param callbackPort local port to catch Etsy's redirect on; 0 means no listener, the code is pasted */
     public Login(EtsyClient etsy, EnvFile env, BufferedReader in, PrintStream out,
-                 Supplier<String> stateSupplier, Supplier<String> verifierSupplier) {
+                 Supplier<String> stateSupplier, Supplier<String> verifierSupplier, int callbackPort) {
         this.etsy = etsy;
         this.env = env;
         this.in = in;
         this.out = out;
         this.stateSupplier = stateSupplier;
         this.verifierSupplier = verifierSupplier;
+        this.callbackPort = callbackPort;
     }
 
-    public static Login interactive(EtsyClient etsy, EnvFile env) {
+    /** Listens on {@code callbackPort} only when the redirect URI points at a tunnel or local host. */
+    public static Login interactive(EtsyClient etsy, EnvFile env, int callbackPort) {
+        String redirect = env.read().getOrDefault("ETSY_REDIRECT_URI", "");
         return new Login(etsy, env, new BufferedReader(new java.io.InputStreamReader(System.in)), System.out,
-                () -> randomToken(24), () -> randomToken(48));
+                () -> randomToken(24), () -> randomToken(48), listensFor(redirect) ? callbackPort : 0);
+    }
+
+    static boolean listensFor(String redirectUri) {
+        try {
+            String host = URI.create(redirectUri).getHost();
+            return host != null && (host.equals("localhost") || host.equals("127.0.0.1")
+                    || host.matches(".+\\.ngrok(-free)?\\.(dev|app|io)"));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     public void run() {
@@ -52,13 +69,39 @@ public class Login {
         String state = stateSupplier.get();
         String verifier = verifierSupplier.get();
 
-        out.println("Open this URL in your browser and approve access:");
-        out.println();
-        out.println(authorizationUrl(HttpEtsyClient.keystring(apiKey), redirect, challengeFor(verifier), state));
-        out.println();
-        out.println("Then paste the code shown on the redirect page (or the whole redirected URL) and press Enter:");
-        etsy.exchangeCode(extractCode(readLine(), state), verifier);
+        CallbackServer listener = startListener(redirect);
+        try {
+            out.println("Open this URL in your browser and approve access:");
+            out.println();
+            out.println(authorizationUrl(HttpEtsyClient.keystring(apiKey), redirect, challengeFor(verifier), state));
+            out.println();
+            String pasted = null;
+            if (listener != null) {
+                out.println("Waiting for Etsy to redirect to http://localhost:" + callbackPort + " (up to "
+                        + CALLBACK_TIMEOUT.toMinutes() + " minutes)...");
+                pasted = listener.awaitQuery(CALLBACK_TIMEOUT);
+                if (pasted == null) out.println("No redirect received.");
+            }
+            if (pasted == null) {
+                out.println("Paste the code shown on the redirect page (or the whole redirected URL) and press Enter:");
+                pasted = readLine();
+            }
+            etsy.exchangeCode(extractCode(pasted, state), verifier);
+        } finally {
+            if (listener != null) listener.close();
+        }
         out.println("Logged in. Tokens were saved to " + env.path() + ".");
+    }
+
+    private CallbackServer startListener(String redirect) {
+        if (callbackPort <= 0) return null;
+        try {
+            return CallbackServer.start(callbackPort, URI.create(redirect).getPath());
+        } catch (IOException e) {
+            out.println("Could not listen on port " + callbackPort + " (" + e.getMessage()
+                    + "); you will need to paste the code instead.");
+            return null;
+        }
     }
 
     static String authorizationUrl(String apiKey, String redirectUri, String challenge, String state) {

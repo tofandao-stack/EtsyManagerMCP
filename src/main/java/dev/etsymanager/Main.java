@@ -32,7 +32,7 @@ public final class Main {
 
         if (args.length > 0 && args[0].equals("login")) {
             try {
-                Login.interactive(etsy, env).run();
+                Login.interactive(etsy, env, loginPort()).run();
             } catch (IllegalArgumentException | EtsyException e) {
                 System.err.println("Login failed: " + e.getMessage());
                 System.exit(1);
@@ -47,6 +47,12 @@ public final class Main {
         ChangeLog changeLog = new ChangeLog(envPath.resolveSibling("change-log.json"));
         McpWiring.start(new ToolHandlers(etsy, changeLog));
         Thread.currentThread().join();
+    }
+
+    /** ETSY_LOGIN_PORT (default 8080, the port BookFlow's tunnel uses); 0 disables the local listener. */
+    private static int loginPort() {
+        String v = System.getenv("ETSY_LOGIN_PORT");
+        return v == null || v.isBlank() ? 8080 : Integer.parseInt(v.strip());
     }
 
     private static void sleep(Duration d) {

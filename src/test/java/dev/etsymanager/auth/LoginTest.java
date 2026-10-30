@@ -57,7 +57,7 @@ class LoginTest {
         Files.writeString(env, "ETSY_API_KEY=key:secret\nETSY_REDIRECT_URI=https://example.test/cb\n");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         new Login(client, new EnvFile(env), new BufferedReader(new StringReader(pasted + "\n")),
-                new PrintStream(out, true, StandardCharsets.UTF_8), () -> "fixed-state", () -> "fixed-verifier").run();
+                new PrintStream(out, true, StandardCharsets.UTF_8), () -> "fixed-state", () -> "fixed-verifier", 0).run();
         return out.toString(StandardCharsets.UTF_8);
     }
 
@@ -81,5 +81,60 @@ class LoginTest {
         assertThrows(IllegalArgumentException.class,
                 () -> run(other, "https://example.test/cb?code=xyz&state=forged", dir.resolve(".env")));
         assertTrue(other.exchanged.isEmpty());
+    }
+
+    // ---- local callback listener ------------------------------------------------------------
+
+    static int freePort() throws Exception {
+        try (java.net.ServerSocket s = new java.net.ServerSocket(0)) {
+            return s.getLocalPort();
+        }
+    }
+
+    @Test
+    void capturesTheCallbackAutomaticallyWhenListening() throws Exception {
+        int port = freePort();
+        Path env = dir.resolve(".env");
+        Files.writeString(env, "ETSY_API_KEY=key\nETSY_REDIRECT_URI=https://example.test/api/v1/etsy/callback\n");
+        CapturingClient client = new CapturingClient();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Thread login = new Thread(() -> new Login(client, new EnvFile(env), new BufferedReader(new StringReader("")),
+                new PrintStream(out, true, StandardCharsets.UTF_8), () -> "fixed-state", () -> "fixed-verifier", port).run());
+        login.start();
+        for (int i = 0; i < 100 && !out.toString(StandardCharsets.UTF_8).contains("Waiting for Etsy"); i++) Thread.sleep(50);
+
+        java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient().send(
+                java.net.http.HttpRequest.newBuilder(URI.create(
+                        "http://127.0.0.1:" + port + "/api/v1/etsy/callback?code=abc&state=fixed-state")).build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        login.join(5000);
+
+        assertEquals(200, res.statusCode());
+        assertTrue(res.body().contains("close this tab"), res.body());
+        assertEquals(List.of("abc|fixed-verifier"), client.exchanged);
+        assertFalse(login.isAlive());
+    }
+
+    @Test
+    void fallsBackToPastingWhenThePortIsTaken() throws Exception {
+        try (java.net.ServerSocket busy = new java.net.ServerSocket(0)) {
+            Path env = dir.resolve(".env");
+            Files.writeString(env, "ETSY_API_KEY=key\nETSY_REDIRECT_URI=https://example.test/cb\n");
+            CapturingClient client = new CapturingClient();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            new Login(client, new EnvFile(env), new BufferedReader(new StringReader("pasted-code\n")),
+                    new PrintStream(out, true, StandardCharsets.UTF_8), () -> "s", () -> "v", busy.getLocalPort()).run();
+            assertEquals(List.of("pasted-code|v"), client.exchanged);
+            assertTrue(out.toString(StandardCharsets.UTF_8).contains("paste"));
+        }
+    }
+
+    @Test
+    void listensOnlyForTunnelOrLocalRedirectHosts() {
+        assertTrue(Login.listensFor("https://boat-sharply-frivolous.ngrok-free.dev/api/v1/etsy/callback"));
+        assertTrue(Login.listensFor("https://abc.ngrok.app/cb"));
+        assertTrue(Login.listensFor("https://localhost/cb"));
+        assertFalse(Login.listensFor("https://tofandao-stack.github.io/EtsyManagerMCP/redirect/"));
+        assertFalse(Login.listensFor(""));
     }
 }

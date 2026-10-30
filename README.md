@@ -12,11 +12,12 @@ shipping or alt text. It only fetches your own shop.
    Pages and register its HTTPS URL as the redirect URI.
 2. `cp .env.example .env` and set `ETSY_API_KEY` and `ETSY_REDIRECT_URI`.
 3. Run `./etsy-manager.sh login` (builds the jar if needed) and follow the prompts.
-      Repeat roughly every 90 days, when the refresh token expires.
-   If `ETSY_REDIRECT_URI` is an ngrok domain, `login` starts the tunnel for you (pointing at an unused local
-   port so another app behind the same domain can't consume the code) and stops it afterwards. Stop any other
-   ngrok using that domain first. After approving, the redirect page will fail to load: copy the whole URL
-   from the address bar and paste it at the prompt. `ETSY_NGROK=0` skips the tunnel.
+   Repeat roughly every 90 days, when the refresh token expires.
+   If `ETSY_REDIRECT_URI` is an ngrok domain, `login` starts the tunnel for you (to `ETSY_LOGIN_PORT`, default
+   8080) and listens on that port itself, so Etsy's redirect is caught automatically and you only approve in
+   the browser. Don't run another app on that port or ngrok domain at the same time. If the port is busy, or
+   after 5 minutes without a redirect, it falls back to asking you to paste the code or the whole redirected
+   URL. `ETSY_NGROK=0` skips the tunnel; `ETSY_LOGIN_PORT=0` disables the listener.
 4. Register the server in your MCP configuration:
 
 ```json

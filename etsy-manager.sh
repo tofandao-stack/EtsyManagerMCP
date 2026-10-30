@@ -7,16 +7,16 @@
 # The jar is rebuilt automatically when it is missing or older than the sources.
 #
 # `login` starts an ngrok tunnel for the host in ETSY_REDIRECT_URI when that host is an ngrok domain,
-# so Etsy's redirect has somewhere to land. The tunnel points at ETSY_LOGIN_PORT (default 8765, where
-# nothing listens), so another app behind the same domain (e.g. BookFlow) cannot consume the one-time code.
-# Etsy will redirect to a page that fails to load; copy the whole URL from the browser's address bar and
-# paste it at the prompt. Stop any other ngrok using the same domain first. ETSY_NGROK=0 skips the tunnel.
-# ETSY_ENV_FILE defaults to <repo>/.env so it works from any working directory.
+# pointed at ETSY_LOGIN_PORT (default 8080, as in BookFlow's dev.sh). The login command itself listens on
+# that port and catches Etsy's redirect, so there is no copy-paste. Do not run BookFlow at the same time:
+# it would hold both the port and the ngrok domain. ETSY_NGROK=0 skips the tunnel; ETSY_LOGIN_PORT=0
+# disables the listener (the code is then pasted at the prompt).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JAR="$ROOT/target/etsy-manager-mcp-0.1.0.jar"
 export ETSY_ENV_FILE="${ETSY_ENV_FILE:-$ROOT/.env}"
+export ETSY_LOGIN_PORT="${ETSY_LOGIN_PORT:-8080}"
 
 build() {
   # stdout is the MCP channel when serving, so all build output goes to stderr
@@ -51,7 +51,8 @@ start_ngrok() {
   command -v ngrok >/dev/null 2>&1 || { echo "ngrok is required for $host. Install it or set ETSY_NGROK=0." >&2; exit 1; }
   command -v setsid >/dev/null 2>&1 || { echo "setsid is required to manage the ngrok process." >&2; exit 1; }
 
-  port="${ETSY_LOGIN_PORT:-8765}"
+  port="$ETSY_LOGIN_PORT"
+  [[ "$port" != "0" ]] || port=8080
   ngrok_log="$(mktemp)"
   trap stop_ngrok EXIT INT TERM
   setsid ngrok http "$port" --url="https://$host" --log=stdout >"$ngrok_log" 2>&1 &
@@ -64,7 +65,7 @@ start_ngrok() {
       tail -n 5 "$ngrok_log" >&2
       exit 1
     fi
-    grep -q "started tunnel" "$ngrok_log" && { echo "ngrok tunnel up: https://$host -> localhost:$port (nothing listens there on purpose)" >&2; return 0; }
+    grep -q "started tunnel" "$ngrok_log" && { echo "ngrok tunnel up: https://$host -> localhost:$port" >&2; return 0; }
     sleep 0.5
   done
   echo "ngrok did not report a tunnel within 15s; continuing anyway. Log tail:" >&2
