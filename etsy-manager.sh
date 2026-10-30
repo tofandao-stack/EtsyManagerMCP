@@ -5,6 +5,12 @@
 #   ./etsy-manager.sh build    (re)build the jar
 #   ./etsy-manager.sh test     run the offline test suite
 # The jar is rebuilt automatically when it is missing or older than the sources.
+#
+# `login` starts an ngrok tunnel for the host in ETSY_REDIRECT_URI when that host is an ngrok domain,
+# so Etsy's redirect has somewhere to land. The tunnel points at ETSY_LOGIN_PORT (default 8765, where
+# nothing listens), so another app behind the same domain (e.g. BookFlow) cannot consume the one-time code.
+# Etsy will redirect to a page that fails to load; copy the whole URL from the browser's address bar and
+# paste it at the prompt. Stop any other ngrok using the same domain first. ETSY_NGROK=0 skips the tunnel.
 # ETSY_ENV_FILE defaults to <repo>/.env so it works from any working directory.
 set -euo pipefail
 
@@ -17,6 +23,54 @@ build() {
   (cd "$ROOT" && mvn -q -DskipTests package) >&2
 }
 
+ngrok_pid=""
+ngrok_log=""
+
+stop_ngrok() {
+  if [[ -n "$ngrok_pid" ]] && kill -0 "$ngrok_pid" 2>/dev/null; then
+    kill -TERM -- "-$ngrok_pid" 2>/dev/null || kill -TERM "$ngrok_pid" 2>/dev/null || true
+    wait "$ngrok_pid" 2>/dev/null || true
+  fi
+  [[ -n "$ngrok_log" ]] && rm -f "$ngrok_log"
+  return 0
+}
+
+redirect_uri() {
+  [[ -f "$ETSY_ENV_FILE" ]] || return 0
+  sed -n 's/^ETSY_REDIRECT_URI=//p' "$ETSY_ENV_FILE" | tail -n1 | tr -d "\"'\r"
+}
+
+# Starts ngrok for the redirect URI's host when it is an ngrok domain; otherwise does nothing.
+start_ngrok() {
+  [[ "${ETSY_NGROK:-1}" == "0" ]] && return 0
+  local uri host port
+  uri="$(redirect_uri)"
+  host="$(sed -E 's|^https://([^/:]+).*|\1|' <<<"$uri")"
+  [[ "$uri" == https://* && "$host" =~ \.ngrok(-free)?\.(dev|app|io)$ ]] || return 0
+
+  command -v ngrok >/dev/null 2>&1 || { echo "ngrok is required for $host. Install it or set ETSY_NGROK=0." >&2; exit 1; }
+  command -v setsid >/dev/null 2>&1 || { echo "setsid is required to manage the ngrok process." >&2; exit 1; }
+
+  port="${ETSY_LOGIN_PORT:-8765}"
+  ngrok_log="$(mktemp)"
+  trap stop_ngrok EXIT INT TERM
+  setsid ngrok http "$port" --url="https://$host" --log=stdout >"$ngrok_log" 2>&1 &
+  ngrok_pid=$!
+
+  local i
+  for i in $(seq 1 30); do
+    if ! kill -0 "$ngrok_pid" 2>/dev/null; then
+      echo "ngrok exited. Is another ngrok already using $host (e.g. BookFlow's dev.sh)? Stop it and retry." >&2
+      tail -n 5 "$ngrok_log" >&2
+      exit 1
+    fi
+    grep -q "started tunnel" "$ngrok_log" && { echo "ngrok tunnel up: https://$host -> localhost:$port (nothing listens there on purpose)" >&2; return 0; }
+    sleep 0.5
+  done
+  echo "ngrok did not report a tunnel within 15s; continuing anyway. Log tail:" >&2
+  tail -n 5 "$ngrok_log" >&2
+}
+
 needs_build() {
   [[ ! -f "$JAR" ]] || [[ -n "$(find "$ROOT/src" "$ROOT/pom.xml" -newer "$JAR" -print -quit)" ]]
 }
@@ -24,7 +78,7 @@ needs_build() {
 case "${1:-serve}" in
   build) build ;;
   test)  (cd "$ROOT" && mvn test) ;;
-  login) needs_build && build; exec java -jar "$JAR" login ;;
+  login) needs_build && build; start_ngrok; java -jar "$JAR" login ;;
   serve) needs_build && build; exec java -jar "$JAR" ;;
   *)     echo "Usage: $0 [serve|login|build|test]" >&2; exit 2 ;;
 esac
