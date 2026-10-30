@@ -1,0 +1,11 @@
+# secrets and real shop data — never commit
+.env
+change-log.json
+change-log.json.tmp
+data/
+*.local.json
+
+# build
+target/
+.idea/
+*.iml

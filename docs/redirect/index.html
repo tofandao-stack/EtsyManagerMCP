@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Etsy Manager MCP login</title>
+  <style>body{font:16px system-ui;max-width:40rem;margin:3rem auto;padding:0 1rem}code{word-break:break-all;display:block;padding:1rem;background:#eee}</style>
+</head>
+<body>
+  <h1>Etsy login</h1>
+  <p id="msg">Waiting for Etsy&hellip;</p>
+  <code id="code" hidden></code>
+  <script>
+    // Shows the authorization code from the query string so it can be pasted into `login`. Nothing is sent anywhere.
+    const p = new URLSearchParams(location.search);
+    const msg = document.getElementById('msg');
+    const box = document.getElementById('code');
+    if (p.get('code')) {
+      msg.textContent = 'Copy this code and paste it into the terminal running `login`:';
+      box.textContent = p.get('code');
+      box.hidden = false;
+    } else {
+      msg.textContent = p.get('error_description') || p.get('error') || 'No code in the URL.';
+    }
+  </script>
+</body>
+</html>
