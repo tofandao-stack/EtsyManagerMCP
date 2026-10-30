@@ -54,7 +54,7 @@ class LoginTest {
     }
 
     String run(CapturingClient client, String pasted, Path env) throws Exception {
-        Files.writeString(env, "ETSY_API_KEY=key\nETSY_REDIRECT_URI=https://example.test/cb\n");
+        Files.writeString(env, "ETSY_API_KEY=key:secret\nETSY_REDIRECT_URI=https://example.test/cb\n");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         new Login(client, new EnvFile(env), new BufferedReader(new StringReader(pasted + "\n")),
                 new PrintStream(out, true, StandardCharsets.UTF_8), () -> "fixed-state", () -> "fixed-verifier").run();
@@ -67,6 +67,7 @@ class LoginTest {
         String printed = run(client, "  abc123  ", dir.resolve(".env"));
         assertTrue(printed.contains("https://www.etsy.com/oauth/connect?"), printed);
         assertTrue(printed.contains("state=fixed-state"), printed);
+        assertTrue(printed.contains("client_id=key&") && !printed.contains("secret"), printed);
         assertEquals(List.of("abc123|fixed-verifier"), client.exchanged);
     }
 

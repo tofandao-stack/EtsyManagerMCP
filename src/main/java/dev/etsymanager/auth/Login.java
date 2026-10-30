@@ -1,6 +1,7 @@
 package dev.etsymanager.auth;
 
 import dev.etsymanager.etsy.EtsyClient;
+import dev.etsymanager.etsy.HttpEtsyClient;
 import dev.etsymanager.storage.EnvFile;
 
 import java.io.BufferedReader;
@@ -53,7 +54,7 @@ public class Login {
 
         out.println("Open this URL in your browser and approve access:");
         out.println();
-        out.println(authorizationUrl(apiKey, redirect, challengeFor(verifier), state));
+        out.println(authorizationUrl(HttpEtsyClient.keystring(apiKey), redirect, challengeFor(verifier), state));
         out.println();
         out.println("Then paste the code shown on the redirect page (or the whole redirected URL) and press Enter:");
         etsy.exchangeCode(extractCode(readLine(), state), verifier);

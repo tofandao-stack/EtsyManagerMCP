@@ -120,7 +120,7 @@ public class HttpEtsyClient implements EtsyClient {
     public synchronized TokenSet exchangeCode(String code, String codeVerifier) {
         Map<String, String> form = new LinkedHashMap<>();
         form.put("grant_type", "authorization_code");
-        form.put("client_id", apiKey());
+        form.put("client_id", keystring(apiKey()));
         form.put("redirect_uri", env.read().getOrDefault("ETSY_REDIRECT_URI", ""));
         form.put("code", code);
         form.put("code_verifier", codeVerifier);
@@ -135,7 +135,7 @@ public class HttpEtsyClient implements EtsyClient {
         }
         Map<String, String> form = new LinkedHashMap<>();
         form.put("grant_type", "refresh_token");
-        form.put("client_id", apiKey());
+        form.put("client_id", keystring(apiKey()));
         form.put("refresh_token", refresh);
         return tokenRequest(form, refresh);
     }
@@ -159,6 +159,12 @@ public class HttpEtsyClient implements EtsyClient {
         env.update(Map.of(ACCESS_TOKEN, tokens.accessToken(), REFRESH_TOKEN, tokens.refreshToken(),
                 EXPIRES_AT, String.valueOf(expires.getEpochSecond())));
         return tokens;
+    }
+
+    /** The OAuth client_id is the keystring alone; the x-api-key header takes the full "keystring:secret" value. */
+    public static String keystring(String apiKey) {
+        int colon = apiKey.indexOf(':');
+        return colon < 0 ? apiKey : apiKey.substring(0, colon);
     }
 
     private String apiKey() {

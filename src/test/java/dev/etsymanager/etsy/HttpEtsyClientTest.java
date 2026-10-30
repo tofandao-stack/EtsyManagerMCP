@@ -149,7 +149,8 @@ class HttpEtsyClientTest {
         StubEtsyServer.Received refresh = stub.requests.get(0);
         assertTrue(refresh.body().contains("grant_type=refresh_token"), refresh.body());
         assertTrue(refresh.body().contains("refresh_token=refresh-1"), refresh.body());
-        assertTrue(refresh.body().contains("client_id=key%3Asecret") || refresh.body().contains("client_id=key:secret"));
+        assertTrue(refresh.body().contains("client_id=key&"), "client_id is the keystring only: " + refresh.body());
+        assertFalse(refresh.body().contains("secret"), refresh.body());
         assertEquals("Bearer access-2", stub.requests.get(1).header("authorization"));
         Map<String, String> saved = env.read();
         assertEquals("access-2", saved.get("ETSY_ACCESS_TOKEN"));
