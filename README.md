@@ -11,7 +11,7 @@ shipping or alt text. It only fetches your own shop.
 1. Register an Etsy app (scopes used: `listings_r`, `listings_w`, `shops_r`). Host `docs/redirect/` with GitHub
    Pages and register its HTTPS URL as the redirect URI.
 2. `cp .env.example .env` and set `ETSY_API_KEY` and `ETSY_REDIRECT_URI`.
-3. `mvn package`, then `java -jar target/etsy-manager-mcp-0.1.0.jar login` and follow the prompts.
+3. Run `./etsy-manager.sh login` (builds the jar if needed) and follow the prompts.
    Repeat roughly every 90 days, when the refresh token expires.
 4. Register the server in your MCP configuration:
 
@@ -19,15 +19,18 @@ shipping or alt text. It only fetches your own shop.
 {
   "mcpServers": {
     "etsy-manager": {
-      "command": "java",
-      "args": ["-jar", "/absolute/path/to/target/etsy-manager-mcp-0.1.0.jar"],
-      "env": { "ETSY_ENV_FILE": "/absolute/path/to/.env" }
+      "command": "/absolute/path/to/etsy-manager.sh"
     }
   }
 }
 ```
 
-`ETSY_ENV_FILE` defaults to `./.env`. The change log is `change-log.json` next to it. Both are gitignored.
+The script wraps `java -jar target/etsy-manager-mcp-0.1.0.jar`, which also works directly. `ETSY_ENV_FILE` defaults to `<repo>/.env` in the script and `./.env` for the bare jar. The change log is `change-log.json` next to it. Both are gitignored.
+
+## Layout
+
+`dev.etsymanager` has `model` (listing data types), `etsy` (client interface and HTTP implementation), `storage`
+(`.env` and change log), `tools` (tool handlers, definitions, validation), `auth` (login) and `mcp` (SDK wiring).
 
 ## Tools
 
