@@ -8,6 +8,9 @@ shipping or alt text. It only fetches your own shop.
 
 ## Setup
 
+0. Install Java 21+ and download `etsy-manager-mcp.jar` from the
+   [latest release](https://github.com/tofandao-stack/EtsyManagerMCP/releases/latest/download/etsy-manager-mcp.jar).
+   An agent skill that walks through setup and safe editing is in `skill/etsy-listing-manager/`.
 1. Get Etsy API access for your shop (scopes used: `listings_r`, `listings_w`, `shops_r`) and register
    `https://tofandao-stack.github.io/EtsyManagerMCP/redirect/` as your app's callback URL.
 2. Run `java -jar etsy-manager-mcp.jar login`. The first time, it asks for your API key ("keystring:shared secret"),
@@ -56,3 +59,8 @@ are gitignored.
 
 `mvn test` runs everything offline: the tool layer against a fake Etsy, and the HTTP client against a local
 stub server. Tests tagged `live` hit the real API and run only with `mvn test -Plive` once your app is approved.
+
+## Releasing
+
+Push a tag like `v0.2.0`; the `release` workflow builds, runs the offline tests and attaches
+`etsy-manager-mcp.jar` to a GitHub Release. Pull requests run the same build without publishing.
