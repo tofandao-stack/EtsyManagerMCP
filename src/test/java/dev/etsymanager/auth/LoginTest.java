@@ -83,6 +83,40 @@ class LoginTest {
         assertTrue(other.exchanged.isEmpty());
     }
 
+    @Test
+    void firstRunAsksForTheKeyAndDefaultsTheRedirect() throws Exception {
+        Path env = dir.resolve("fresh/.env");
+        CapturingClient client = new CapturingClient();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new Login(client, new EnvFile(env), new BufferedReader(new StringReader(" mykey:mysecret \nthe-code\n")),
+                new PrintStream(out, true, StandardCharsets.UTF_8), () -> "s", () -> "v", 0).run();
+
+        String saved = Files.readString(env);
+        assertTrue(saved.contains("ETSY_API_KEY=mykey:mysecret"), saved);
+        assertTrue(saved.contains("ETSY_REDIRECT_URI=" + Login.DEFAULT_REDIRECT_URI), saved);
+        String printed = out.toString(StandardCharsets.UTF_8);
+        assertTrue(printed.contains("client_id=mykey&") && !printed.contains("mysecret"), printed);
+        assertTrue(printed.contains(env.toString()), "tells the user where settings live");
+        assertEquals(List.of("the-code|v"), client.exchanged);
+    }
+
+    @Test
+    void keepsAConfiguredRedirectAndDoesNotAskForAnExistingKey() throws Exception {
+        CapturingClient client = new CapturingClient();
+        String printed = run(client, "c", dir.resolve(".env"));
+        assertFalse(printed.contains("First-time setup"), printed);
+        assertTrue(printed.contains("redirect_uri=https%3A%2F%2Fexample.test%2Fcb"), printed);
+        assertEquals(List.of("c|fixed-verifier"), client.exchanged);
+    }
+
+    @Test
+    void emptyKeyIsRejected() {
+        Path env = dir.resolve("empty/.env");
+        assertThrows(IllegalArgumentException.class, () -> new Login(new CapturingClient(), new EnvFile(env),
+                new BufferedReader(new StringReader("\n")), new PrintStream(new ByteArrayOutputStream()),
+                () -> "s", () -> "v", 0).run());
+    }
+
     // ---- local callback listener ------------------------------------------------------------
 
     static int freePort() throws Exception {
