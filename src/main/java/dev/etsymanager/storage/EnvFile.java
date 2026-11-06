@@ -71,9 +71,21 @@ public class EnvFile {
         return key.startsWith("export ") ? key.substring(7).strip() : key;
     }
 
+    /** Creates a missing settings folder, readable only by its owner where the filesystem supports it. */
+    private static void ensureDirectory(Path dir) throws IOException {
+        if (Files.isDirectory(dir)) return;
+        Files.createDirectories(dir);
+        try {
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"));
+        } catch (UnsupportedOperationException ignored) {
+            // non-POSIX filesystem
+        }
+    }
+
     private void writeAtomically(String content) {
         try {
             Path dir = path.toAbsolutePath().getParent();
+            ensureDirectory(dir);
             Path tmp = Files.createTempFile(dir, ".env", ".tmp");
             try {
                 try {

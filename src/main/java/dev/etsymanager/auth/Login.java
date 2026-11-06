@@ -22,6 +22,8 @@ import java.util.function.Supplier;
 /** The one-off `login` command: print the authorization URL, read the pasted code, exchange it for tokens. */
 public class Login {
     static final String SCOPES = "listings_r listings_w shops_r";
+    /** The project's hosted redirect page (docs/redirect/ on GitHub Pages), used when no redirect URI is configured. */
+    public static final String DEFAULT_REDIRECT_URI = "https://tofandao-stack.github.io/EtsyManagerMCP/redirect/";
     private static final java.time.Duration CALLBACK_TIMEOUT = java.time.Duration.ofMinutes(5);
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -47,7 +49,7 @@ public class Login {
 
     /** Listens on {@code callbackPort} only when the redirect URI points at a tunnel or local host. */
     public static Login interactive(EtsyClient etsy, EnvFile env, int callbackPort) {
-        String redirect = env.read().getOrDefault("ETSY_REDIRECT_URI", "");
+        String redirect = redirectUri(env.read());
         return new Login(etsy, env, new BufferedReader(new java.io.InputStreamReader(System.in)), System.out,
                 () -> randomToken(24), () -> randomToken(48), listensFor(redirect) ? callbackPort : 0);
     }
@@ -64,8 +66,23 @@ public class Login {
 
     public void run() {
         Map<String, String> cfg = env.read();
-        String apiKey = require(cfg, "ETSY_API_KEY");
-        String redirect = require(cfg, "ETSY_REDIRECT_URI");
+        Map<String, String> setup = new LinkedHashMap<>();
+        String apiKey = cfg.getOrDefault("ETSY_API_KEY", "").strip();
+        if (apiKey.isEmpty()) {
+            out.println("First-time setup. Paste your Etsy API key as shown in the Etsy developer portal");
+            out.println("(\"keystring:shared secret\") and press Enter:");
+            apiKey = readLine().strip();
+            if (apiKey.isEmpty()) throw new IllegalArgumentException("No API key was entered");
+            setup.put("ETSY_API_KEY", apiKey);
+        }
+        String redirect = redirectUri(cfg);
+        if (cfg.getOrDefault("ETSY_REDIRECT_URI", "").isBlank()) {
+            setup.put("ETSY_REDIRECT_URI", redirect);
+            out.println("Using the redirect URI " + redirect);
+            out.println("It must be registered, exactly as written, as a callback URL of your Etsy app.");
+            out.println();
+        }
+        if (!setup.isEmpty()) env.update(setup);
         String state = stateSupplier.get();
         String verifier = verifierSupplier.get();
 
@@ -90,7 +107,7 @@ public class Login {
         } finally {
             if (listener != null) listener.close();
         }
-        out.println("Logged in. Tokens were saved to " + env.path() + ".");
+        out.println("Logged in. Your settings and tokens are saved in " + env.path() + ".");
     }
 
     private CallbackServer startListener(String redirect) {
@@ -156,10 +173,9 @@ public class Login {
         }
     }
 
-    private static String require(Map<String, String> cfg, String key) {
-        String v = cfg.get(key);
-        if (v == null || v.isBlank()) throw new IllegalArgumentException(key + " must be set in .env before login");
-        return v;
+    static String redirectUri(Map<String, String> cfg) {
+        String v = cfg.getOrDefault("ETSY_REDIRECT_URI", "").strip();
+        return v.isEmpty() ? DEFAULT_REDIRECT_URI : v;
     }
 
     private static String randomToken(int bytes) {

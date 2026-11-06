@@ -6,6 +6,7 @@ import dev.etsymanager.etsy.EtsyException;
 import dev.etsymanager.etsy.HttpEtsyClient;
 import dev.etsymanager.mcp.McpWiring;
 import dev.etsymanager.storage.ChangeLog;
+import dev.etsymanager.storage.ConfigPaths;
 import dev.etsymanager.storage.EnvFile;
 import dev.etsymanager.tools.ToolHandlers;
 
@@ -26,7 +27,7 @@ public final class Main {
     private Main() {}
 
     public static void main(String[] args) throws Exception {
-        Path envPath = Path.of(System.getenv().getOrDefault("ETSY_ENV_FILE", ".env")).toAbsolutePath();
+        Path envPath = ConfigPaths.envFile();
         EnvFile env = new EnvFile(envPath);
         EtsyClient etsy = new HttpEtsyClient(HttpClient.newHttpClient(), API_BASE, TOKEN_URI, env, Instant::now, Main::sleep);
 
